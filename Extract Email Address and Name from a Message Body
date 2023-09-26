@@ -1,0 +1,25 @@
+const EmailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi;
+exports.handler = async function(event, context, callback) {
+  const text = event.activity.message_body;
+  console.log('text:', text)
+  let email = text.match(EmailRegex)[0];
+  
+  if (email && email.length) {
+    email = email.replace(/^\s*/g,'').replace(/\s*$/g,'');
+    console.log("email:", email);
+    let name = text.replace(new RegExp(`${email}.*`,'ig'), '')
+    console.log("name before clean:", name);
+    if (name.length > 1) {
+      let parts = name.split(/\s+/);
+      console.log("parts:", parts);
+      let k = [];
+      while (parts.length && k.length < 3) { // shift off the first 3 parts of the text before email - so we don't miss middle names... but also this way if they give us first name last name address and then email we don't include address in the captured name...
+        k.push(parts.shift())
+      }
+      name = k.join(" ").replace(/[^A-z ]/g,'').replace(/^\s*/g,'').replace(/\s*$/g,'');
+      await context.ctm.update({name: name, email: email});
+    } else {
+      await context.ctm.update({email: email});
+    }
+  }
+}
