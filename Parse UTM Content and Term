@@ -1,0 +1,18 @@
+exports.handler = async (event, context) => {
+  const parseUtmParameters = (location) => {
+    const url = new URL(location);
+    const utmTerm = url.searchParams.get("utm_term");
+    const utmContent = url.searchParams.get("utm_content");
+    return { utmTerm, utmContent };
+  };
+
+  const { location } = event.activity;
+  const { utmTerm, utmContent } = parseUtmParameters(location);
+
+  await context.ctm.update({
+    custom_fields: {
+      utm_term: utmTerm,
+      utm_content: utmContent,
+    },
+  });
+};
