@@ -1,0 +1,23 @@
+exports.handler = async (event, context, callback) => {
+  const ctm = context.ctm;
+  const activity = event.activity;
+  
+  // Get the value of the "verified_caller_id" custom field
+  const verified_caller_id = activity.custom_fields?.verified_caller_id;
+  
+  // Check if the "verified_caller_id" custom field is not empty
+  if (verified_caller_id) {
+    console.log("output here: with ", verified_caller_id);
+    // Return a success message
+    context.done(null, {say: "The outbound caller phone number has been updated successfully.",
+                        allow: true,
+                        update: {
+                          from: verified_caller_id
+                        }
+    });
+  } else {
+    console.log("shit nothing");
+    // Return an error message if the "verified_caller_id" custom field is empty
+    context.done(null, {allow: true, say: "The 'verified_caller_id' custom field is empty. Please set a value for this field."});
+  }
+};
