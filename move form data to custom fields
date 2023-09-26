@@ -1,0 +1,25 @@
+exports.handler = async (event, context) => {
+  // Extract the form data
+  const name = event.form.name;
+  const address = event.form.custom_address;
+  const zipCode = event.form.custom_zipCode;
+  const notes = event.form.custom_notes;
+
+  // Update the activity with the extracted data
+  await context.ctm.update({
+    custom_fields: {
+      form_contact_name: name,
+      form_address: address,
+      form_zip_code: zipCode,
+      form_notes: notes
+    }
+  });
+
+  // Return a success message
+  return {
+    statusCode: 200,
+    body: JSON.stringify({
+      message: 'Activity updated successfully'
+    })
+  };
+};
