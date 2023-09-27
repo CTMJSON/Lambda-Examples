@@ -1,0 +1,98 @@
+// assertion is the callId in question is currently tagged as a repeat
+async function checkRepeatIsBest(callId, contactNumber, context) {
+  const queryOptions = {
+    filter: `id:<${callId}`,
+    contact_number: contactNumber,
+    limit_fields: ['id', 'custom_fields', 'name', 'caller_number','unix_time','tag_list','talk_time'],
+//    multi_tags:'repeat',
+//    multi_tags_operator: 'excludes',
+    direction: ['inbound'],
+    call_score_max:0,
+//    talk_time_operator:'less_than',
+//    duration_max: '30',
+//    duration_operator: 'less_than',
+    per_page: 10
+  };
+  
+  const res = await context.ctm.api_post("calls/search", queryOptions);
+  console.log(res.responseBody);
+  const data = JSON.parse(res.responseBody);
+  if (data.total_entries > 0) {
+
+    const hasRepeats = data.calls.filter( (c) => {
+      return c.tag_list.includes('repeat');
+    }).length > 0;
+
+    data.calls.forEach( (c) => {
+      console.log(c);
+    });
+    
+    if (hasRepeats) {
+      console.log("do nothing");
+      return false;
+    } else {
+      return true
+    }
+
+  } else {
+    return false;
+  }
+
+
+}
+
+exports.handler = async (event, context) => {
+  
+  const ctm  = context.ctm;
+  const call = event.activity; 
+  const tag_list = call.tag_list;
+  const new_caller_question =  `You are the marketing manager of a Plumbing company evaluating the quality of phone calls based on the transcript. Each call transcript consists of an agent who represents the company and a potential customer. You will evaluate if the call is relevant to the business and represents a potential opportunity for the company to provide service to the customer. You are not evaluating how well the call was handled by the agent, the availability of the company, or the sales ability of the agent. You are not evaluating the accuracy of the transcription. You are not evaluating if the customer and agent are able to understand each other. You are only evaluating whether the call represents a potential opportunity for the company to provide service to the customer.
+Based on the call transcript, Score the call a 1, 2, 3, 4, or 5. You will only use the numbers 1,2,3,4, or 5 in the format "score: n" followed by a one-sentence summary of the call describing why the customer was calling and the outcome of the call. The total output summary must be less than 30 words. The summary must only be listed once and must not be repeated. Do not include the word "summary" in the summary. Score the call a 1 if any of the following characteristics are present in the transcript:
+The agent does not sell the product or provide the service that the customer asks about.
+The customer is trying to sell services to the agent.
+The customer thinks they were calling the wrong business and does not book a service with the agent.
+
+If none of the above characteristics are present in the call transcript, then use the following criteria to determine the call score:
+Score the call a 5 if the customer requires plumbing repair, plumbing service, emergency plumbing service, or installation, or the agent schedules an appointment, attempts to schedule an appointment, or implies that they will schedule an appointment, or the agent provides a quote or estimate.
+Score the call a 4 if the customer needs plumbing service, or the call represents a future opportunity for the company to service the customer, or the customer expresses interest in scheduling an appointment for a later time, or the agent offers to follow up with the customer at a later time,  or the customer rejects or objects the agent fee, or the agent cannot accommodate the customer's needs in a timely manner.
+Score the call a 3 if the call is relevant for a Plumbing company, but there is a low probability that an appointment will be scheduled for service. If the customer is calling to reschedule or cancel or confirm their appointment, the call should be scored as a 3.
+Score the call a 2 if the call is unclear, is not answered by the agent, the call is disconnected, or appears to have gone to voicemail, or you are unable to interpret a transcript or there is no transcript, or cannot evaluate the call based on the criteria provided, or if the transcript does not contain dialogue from both the customer and agent, or if the call is incomplete. If there is dialogue from only one person the call must be scored as a 2. If the call only contains an automated message that provides information about the company and its services the call must be scored a 2. 
+Please note that you are evaluating the call based on the information in the transcript and should not take into account any external factors that may have affected the call.`;
+  const repeat_caller_question = `You are the marketing manager of a Plumbing company evaluating the quality of phone calls based on the transcript. Each call transcript consists of a agent who represents the company and a potential customer. You will evaluate if the call is relevant to the business and represents a potential opportunity for the company to provide service to the customer. You are not evaluating how well the call was handled by the agent, the availability of the company, or the sales ability of the agent. You are not evaluating the accuracy of the transcription. You are not evaluating if the customer and agent are able to understand each other. You are only evaluating whether the call represents a potential opportunity for the company to provide service to the customer.  Based on the transcript, provide a one-sentence summary of the call describing why the customer was calling and the outcome of the call. The total output summary must be less than 30 words. If the transcript is unclear or you are unable to interpret or detect a transcript, or cannot evaluate the transcript based on the criteria provided summarize with "no data". Start the summary with the following text "Repeat customer:" Please note that you are evaluating the call based on the information in the transcript and should not take into account any external factors that may have affected the call."`;
+  let answer = null;
+  
+  if (call.duration > 30) {
+    if (tag_list?.includes('repeat')) {
+      if ((await checkRepeatIsBest(call.id, call.caller_number, context))) {
+        console.log("new caller");
+        answer = await ctm.ask(new_caller_question, {normalize_speaker_labels: true});
+        // /api/v1/accounts/:account_id/calls/:id/tag
+        await ctm.api_delete(`calls/${call.id}/tag`, {tag: 'repeat'});
+      } else {
+        console.log("repeat caller", repeat_caller_question);
+        answer = await ctm.ask(repeat_caller_question, {normalize_speaker_labels: true});
+      }
+    } else {
+      console.log("new caller");
+      answer = await ctm.ask(new_caller_question, {normalize_speaker_labels: true});
+    }
+    console.log("answer:", answer);
+    if (!answer) { throw "retry empty answer errro"; }
+  } else {
+    console.log("short call low value");
+    if (tag_list?.includes('repeat')) {
+      console.log("repeat caller", repeat_caller_question);
+      answer = "Repeat Caller: No Call Data Available";
+    } else {
+      console.log("new caller");
+      answer = "No Conversion Registered (call duration under 30 seconds)";
+    }
+  }
+  
+  console.log("answer:", answer);
+
+  const scoreMatch = answer.match(/Score: (\d)/i);
+  const score = scoreMatch && scoreMatch[1] ? Number(scoreMatch[1]) : null;
+  await context.ctm.score(answer.replace(/Score[:,] \d+\.?/gi,'').replace(/Summary[:,]/ig,'').replace(/^\s*\-\s*/g,'').trim(), score);
+
+}
