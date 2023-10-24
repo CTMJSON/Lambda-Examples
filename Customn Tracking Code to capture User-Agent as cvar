@@ -1,0 +1,6 @@
+try { 
+    var __ctm_cvars = __ctm_cvars || []; 
+    __ctm_cvars.push({
+        userAgent: navigator.userAgent
+    }); 
+} catch(e) { }
